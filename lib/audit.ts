@@ -4,7 +4,7 @@ interface AuditEntry {
   actor: string;
   actorIp?: string;
   action: string;
-  targetType: 'QUOTE' | 'INVOICE' | 'CLIENT' | 'SETTINGS' | 'PAYMENT' | 'EMAIL';
+  targetType: 'QUOTE' | 'INVOICE' | 'CLIENT' | 'SETTINGS' | 'PAYMENT' | 'EMAIL' | 'USER';
   targetId?: string;
   metadata?: Record<string, unknown>;
 }

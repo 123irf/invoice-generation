@@ -195,7 +195,7 @@ export function QuoteForm({ initial, clients, predefinedItems, defaults, taxSett
           const r = await updateQuote(initial.id, payload);
           if (r.ok) {
             toast.success('Quote updated');
-            router.push(`/quotes/${initial.id}`);
+            router.push(`/invoice-generation/${initial.id}`);
             router.refresh();
           }
         } else {

@@ -2,11 +2,9 @@ import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { Card } from '@/components/ui/card';
-import { buttonVariants } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { formatCurrency, formatDate } from '@/lib/currency';
-import { FileText, Receipt, AlertCircle, TrendingUp, Plus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { FileText, Receipt, AlertCircle, TrendingUp } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,20 +49,9 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      {/* Header + quick actions */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      {/* Header */}
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <div className="flex gap-2">
-          <Link href="/clients" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
-            <Plus className="h-4 w-4 mr-1" /> Client
-          </Link>
-          <Link href="/quotes/new" className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
-            <Plus className="h-4 w-4 mr-1" /> Quote
-          </Link>
-          <Link href="/invoices/new" className={cn(buttonVariants({ size: 'sm' }))}>
-            <Plus className="h-4 w-4 mr-1" /> Invoice
-          </Link>
-        </div>
       </div>
 
       {/* Stat cards */}
@@ -73,7 +60,7 @@ export default async function DashboardPage() {
           icon={<FileText className="h-5 w-5" />}
           label="Quotes Pending"
           value={quotesPending}
-          href="/quotes?status=SENT"
+          href="/invoice-generation?status=SENT"
           color="blue"
         />
         <StatCard
@@ -103,7 +90,7 @@ export default async function DashboardPage() {
         <Card className="p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">Recent Quotes</h2>
-            <Link href="/quotes" className="text-sm text-slate-600 hover:text-slate-900">
+            <Link href="/invoice-generation" className="text-sm text-slate-600 hover:text-slate-900">
               View all →
             </Link>
           </div>
@@ -114,7 +101,7 @@ export default async function DashboardPage() {
               {recentQuotes.map((q) => (
                 <li key={q.id} className="flex items-center justify-between text-sm border-t pt-2 first:border-t-0 first:pt-0">
                   <div className="min-w-0 flex-1">
-                    <Link href={`/quotes/${q.id}`} className="font-medium hover:underline truncate block">
+                    <Link href={`/invoice-generation/${q.id}`} className="font-medium hover:underline truncate block">
                       {q.number} — {q.client.businessName}
                     </Link>
                     <div className="text-xs text-slate-500">{formatDate(q.createdDate)}</div>

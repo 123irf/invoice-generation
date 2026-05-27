@@ -1,11 +1,12 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
+import { isAdmin } from '@/lib/auth';
 import { getBusinessSettings, getTaxSettings } from '@/lib/settings';
 import { formatCurrency, formatDate } from '@/lib/currency';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { InvoiceActions } from './invoice-actions';
-import { computeDisplayStatus } from '../actions';
+import { computeDisplayStatus } from '../utils';
 
 export default async function InvoiceViewPage({
   params,
@@ -13,6 +14,7 @@ export default async function InvoiceViewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const admin = await isAdmin();
 
   const [invoice, business, taxSettings] = await Promise.all([
     prisma.invoice.findUnique({
@@ -35,7 +37,7 @@ export default async function InvoiceViewPage({
     <div>
       {/* Breadcrumb */}
       <div className="text-sm text-slate-500 mb-4">
-        <Link href="/invoices" className="hover:underline">Invoices</Link>
+        <Link href="/invoice-generation?type=invoices" className="hover:underline">Invoices</Link>
         {' / '}
         <span className="text-slate-900">{invoice.number}</span>
       </div>
@@ -46,6 +48,7 @@ export default async function InvoiceViewPage({
         currentStatus={displayStatus}
         publicToken={invoice.publicToken}
         totalDue={invoice.totalDue}
+        admin={admin}
       />
 
       {/* Invoice Visual Template */}

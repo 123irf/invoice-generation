@@ -1,4 +1,4 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import { prisma } from './prisma';
 import { renderWildcards } from './wildcards';
 import { renderEmailHtml } from '@/emails/base-email';
@@ -8,7 +8,18 @@ import {
 } from './settings';
 import { formatCurrency, formatDate } from './currency';
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const transporter =
+  process.env.SMTP_USER && process.env.SMTP_PASS
+    ? nodemailer.createTransport({
+        host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
+        port: Number(process.env.SMTP_PORT ?? 587),
+        secure: process.env.SMTP_PORT === '465',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      })
+    : null;
 
 type TemplateKey =
   | 'quoteAvailable'
@@ -16,16 +27,23 @@ type TemplateKey =
   | 'paymentReceived'
   | 'paymentReminder';
 
+interface Attachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+}
+
 interface SendOptions {
   templateKey: TemplateKey;
   to: string;
   context: any;
+  attachments?: Attachment[];
 }
 
-export async function sendTemplatedEmail({ templateKey, to, context }: SendOptions) {
-  if (!resend) {
-    console.warn('Resend not configured — skipping email send for', templateKey, 'to', to);
-    return { ok: false, error: 'Resend not configured' };
+export async function sendTemplatedEmail({ templateKey, to, context, attachments }: SendOptions) {
+  if (!transporter) {
+    console.warn('SMTP not configured — skipping email send for', templateKey, 'to', to);
+    return { ok: false, error: 'SMTP not configured (set SMTP_USER and SMTP_PASS)' };
   }
 
   const [emailSettings, business] = await Promise.all([
@@ -74,16 +92,21 @@ export async function sendTemplatedEmail({ templateKey, to, context }: SendOptio
     businessName: business.name,
   });
 
-  const from = `${emailSettings.emailName} <${emailSettings.emailAddress}>`;
-  const bcc = emailSettings.bccOnClientEmails ? emailSettings.emailAddress : undefined;
+  const from = `${emailSettings.emailName} <${process.env.SMTP_USER}>`;
+  const bcc = emailSettings.bccOnClientEmails ? process.env.SMTP_USER : undefined;
 
   try {
-    const response = await resend.emails.send({
+    const info = await transporter.sendMail({
       from,
       to,
       bcc,
       subject: renderedSubject,
       html,
+      attachments: attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType ?? 'application/pdf',
+      })),
     });
 
     await prisma.emailLog.create({
@@ -93,11 +116,11 @@ export async function sendTemplatedEmail({ templateKey, to, context }: SendOptio
         bcc,
         subject: renderedSubject,
         status: 'SENT',
-        resendId: response.data?.id,
+        resendId: info.messageId,
       },
     });
 
-    return { ok: true, id: response.data?.id };
+    return { ok: true, id: info.messageId };
   } catch (e: any) {
     await prisma.emailLog.create({
       data: {

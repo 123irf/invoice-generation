@@ -119,31 +119,29 @@ export async function verifyRazorpayPayment(
   }
 
   // Record payment and update invoice
-  await prisma.$transaction(async (tx) => {
-    await tx.payment.create({
-      data: {
-        invoiceId: invoice.id,
-        date: new Date(),
-        amount: paidAmount,
-        method: 'RAZORPAY',
-        paymentId: razorpayPaymentId,
-        status: 'COMPLETED',
-        memo: `Razorpay order: ${razorpayOrderId}`,
-      },
-    });
+  await prisma.payment.create({
+    data: {
+      invoiceId: invoice.id,
+      date: new Date(),
+      amount: paidAmount,
+      method: 'RAZORPAY',
+      paymentId: razorpayPaymentId,
+      status: 'COMPLETED',
+      memo: `Razorpay order: ${razorpayOrderId}`,
+    },
+  });
 
-    const sumPaid = await tx.payment.aggregate({
-      where: { invoiceId: invoice.id, status: 'COMPLETED' },
-      _sum: { amount: true },
-    });
-    const totalPaid = sumPaid._sum.amount ?? 0;
-    const totalDue = Math.max(0, invoice.total - totalPaid);
-    const newStatus = totalPaid >= invoice.total ? 'PAID' : 'PARTIAL';
+  const sumPaid = await prisma.payment.aggregate({
+    where: { invoiceId: invoice.id, status: 'COMPLETED' },
+    _sum: { amount: true },
+  });
+  const totalPaid = sumPaid._sum.amount ?? 0;
+  const totalDue = Math.max(0, invoice.total - totalPaid);
+  const newStatus = totalPaid >= invoice.total ? 'PAID' : 'PARTIAL';
 
-    await tx.invoice.update({
-      where: { id: invoice.id },
-      data: { paid: totalPaid, totalDue, status: newStatus },
-    });
+  await prisma.invoice.update({
+    where: { id: invoice.id },
+    data: { paid: totalPaid, totalDue, status: newStatus },
   });
 
   await writeAudit({

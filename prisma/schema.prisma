@@ -146,6 +146,62 @@ model PredefinedLineItem {
 }
 
 // ============================================================
+// USERS (Authentication)
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  CLIENT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         UserRole @default(CLIENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  client       Client?
+  permissions  UserPermission[]
+
+  @@index([email])
+}
+
+// ============================================================
+// ROLE PERMISSIONS — Configurable per role by SUPER_ADMIN
+// ============================================================
+
+model RolePermission {
+  id         String   @id @default(cuid())
+  role       UserRole
+  permission String   // e.g. "clients.view", "invoices.create"
+  granted    Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([role, permission])
+  @@index([role])
+}
+
+// ============================================================
+// USER PERMISSIONS — Per-user overrides (takes precedence over role)
+// ============================================================
+
+model UserPermission {
+  id         String   @id @default(cuid())
+  userId     String
+  permission String
+  granted    Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission], name: "user_permission")
+  @@index([userId])
+}
+
+// ============================================================
 // CLIENTS
 // ============================================================
 
@@ -161,6 +217,9 @@ model Client {
   website        String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+
+  userId         String?   @unique
+  user           User?     @relation(fields: [userId], references: [id])
 
   quotes         Quote[]
   invoices       Invoice[]

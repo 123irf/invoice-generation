@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
+import { isAdmin } from '@/lib/auth';
 import { getBusinessSettings, getTaxSettings } from '@/lib/settings';
 import { formatCurrency, formatDate } from '@/lib/currency';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -12,6 +13,7 @@ export default async function QuoteViewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const admin = await isAdmin();
 
   const [quote, business, taxSettings] = await Promise.all([
     prisma.quote.findUnique({
@@ -31,7 +33,7 @@ export default async function QuoteViewPage({
     <div>
       {/* Breadcrumb */}
       <div className="text-sm text-slate-500 mb-4">
-        <Link href="/quotes" className="hover:underline">Quotes</Link>
+        <Link href="/invoice-generation?type=quotations" className="hover:underline">Quotations</Link>
         {' / '}
         <span className="text-slate-900">{quote.number}</span>
       </div>
@@ -42,6 +44,7 @@ export default async function QuoteViewPage({
         currentStatus={quote.status}
         publicToken={quote.publicToken}
         convertedInvoiceId={quote.convertedInvoiceId}
+        admin={admin}
       />
 
       {/* Quote Visual Template */}

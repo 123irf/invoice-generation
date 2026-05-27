@@ -34,7 +34,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return new Response(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${invoice.number}.pdf"`,
+      'Content-Disposition': `attachment; filename="${invoice.number}.pdf"`,
     },
   });
 }

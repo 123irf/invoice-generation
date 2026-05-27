@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Select,
   SelectContent,
@@ -25,7 +26,7 @@ import {
   deleteQuote,
   changeQuoteStatus,
 } from '../actions';
-import { Send, FileText, Pencil, Trash2, Link2, ArrowRight } from 'lucide-react';
+import { Send, FileText, Pencil, Trash2, Link2, ArrowRight, Download } from 'lucide-react';
 
 const ALL_STATUSES = ['DRAFT', 'SENT', 'ACCEPTED', 'DECLINED', 'EXPIRED', 'CANCELLED', 'CONVERTED'];
 
@@ -34,9 +35,10 @@ interface Props {
   currentStatus: string;
   publicToken: string;
   convertedInvoiceId: string | null;
+  admin?: boolean;
 }
 
-export function QuoteActions({ quoteId, currentStatus, publicToken, convertedInvoiceId }: Props) {
+export function QuoteActions({ quoteId, currentStatus, publicToken, convertedInvoiceId, admin }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -84,7 +86,7 @@ export function QuoteActions({ quoteId, currentStatus, publicToken, convertedInv
       const r = await deleteQuote(quoteId);
       if (r.ok) {
         toast.success('Quote deleted');
-        router.push('/quotes');
+        router.push('/invoice-generation?type=quotations');
       } else {
         toast.error('Failed to delete');
       }
@@ -106,10 +108,10 @@ export function QuoteActions({ quoteId, currentStatus, publicToken, convertedInv
   return (
     <>
       <div className="flex flex-wrap gap-2 mb-6">
-        {currentStatus === 'DRAFT' && (
+        {admin && (
           <Button onClick={onSend} disabled={pending}>
             <Send className="h-4 w-4 mr-2" />
-            Send
+            Send Email
           </Button>
         )}
 
@@ -118,7 +120,7 @@ export function QuoteActions({ quoteId, currentStatus, publicToken, convertedInv
           Copy Public Link
         </Button>
 
-        {!convertedInvoiceId && currentStatus !== 'CONVERTED' && (
+        {admin && !convertedInvoiceId && currentStatus !== 'CONVERTED' && (
           <Button variant="outline" onClick={onConvert} disabled={pending}>
             <ArrowRight className="h-4 w-4 mr-2" />
             Convert to Invoice
@@ -135,27 +137,40 @@ export function QuoteActions({ quoteId, currentStatus, publicToken, convertedInv
           </Button>
         )}
 
-        <Button variant="outline" onClick={() => router.push(`/quotes/${quoteId}/edit`)}>
-          <Pencil className="h-4 w-4 mr-2" />
-          Edit
-        </Button>
+        <a
+          href={`/invoice-generation/${quoteId}/pdf`}
+          download
+          className={cn(buttonVariants({ variant: 'outline' }))}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Download PDF
+        </a>
 
-        <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-          <Trash2 className="h-4 w-4 mr-2" />
-          Delete
-        </Button>
+        {admin && (
+          <>
+            <Button variant="outline" onClick={() => router.push(`/invoice-generation/${quoteId}/edit`)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
 
-        {/* Status override */}
-        <Select value={currentStatus} onValueChange={(val: string | null) => { if (val) onStatusChange(val); }}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ALL_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
+
+            {/* Status override */}
+            <Select value={currentStatus} onValueChange={(val: string | null) => { if (val) onStatusChange(val); }}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ALL_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
       </div>
 
       {/* Delete confirmation */}

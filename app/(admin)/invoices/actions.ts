@@ -10,6 +10,8 @@ import { getInvoiceSettings, getTaxSettings } from '@/lib/settings';
 import { writeAudit } from '@/lib/audit';
 import { getAdminEmail } from '@/lib/auth';
 import { sendTemplatedEmail, buildInvoiceContext } from '@/lib/email';
+import { requirePermission } from '@/lib/permissions';
+import { generateInvoicePdf } from '@/lib/generate-pdf';
 
 const lineItemSchema = z.object({
   qty: z.coerce.number().min(0),
@@ -36,6 +38,7 @@ const invoiceSchema = z.object({
 type InvoiceInput = z.infer<typeof invoiceSchema>;
 
 export async function createInvoice(input: InvoiceInput) {
+  await requirePermission('invoices.create');
   const data = invoiceSchema.parse(input);
   const [invoiceSettings, taxSettings] = await Promise.all([
     getInvoiceSettings(),
@@ -49,41 +52,39 @@ export async function createInvoice(input: InvoiceInput) {
     discount: data.discount,
   });
 
-  const created = await prisma.$transaction(async (tx) => {
-    const number = await getNextInvoiceNumber(tx);
-    return tx.invoice.create({
-      data: {
-        number,
-        clientId: data.clientId,
-        title: data.title,
-        description: data.description,
-        orderNumber: data.orderNumber,
-        dueDate: new Date(data.dueDate),
-        createdDate: new Date(data.createdDate),
-        status: data.status,
-        subtotal: totals.subtotal,
-        taxPercentage: taxSettings.taxPercentage,
-        taxAmount: totals.taxAmount,
-        discount: totals.discount,
-        paid: 0,
-        totalDue: totals.total,
-        total: totals.total,
-        terms: data.terms ?? invoiceSettings.defaultTerms,
-        footer: data.footer ?? invoiceSettings.defaultFooter,
-        lineItems: {
-          create: data.lineItems.map((li, idx) => ({
-            parentType: 'INVOICE' as const,
-            qty: li.qty,
-            title: li.title,
-            description: li.description,
-            rate: li.rate,
-            amount: lineItemAmount(li.qty, li.rate),
-            taxable: li.taxable,
-            order: idx,
-          })),
-        },
+  const number = await getNextInvoiceNumber();
+  const created = await prisma.invoice.create({
+    data: {
+      number,
+      clientId: data.clientId,
+      title: data.title,
+      description: data.description,
+      orderNumber: data.orderNumber,
+      dueDate: new Date(data.dueDate),
+      createdDate: new Date(data.createdDate),
+      status: data.status,
+      subtotal: totals.subtotal,
+      taxPercentage: taxSettings.taxPercentage,
+      taxAmount: totals.taxAmount,
+      discount: totals.discount,
+      paid: 0,
+      totalDue: totals.total,
+      total: totals.total,
+      terms: data.terms ?? invoiceSettings.defaultTerms,
+      footer: data.footer ?? invoiceSettings.defaultFooter,
+      lineItems: {
+        create: data.lineItems.map((li, idx) => ({
+          parentType: 'INVOICE' as const,
+          qty: li.qty,
+          title: li.title,
+          description: li.description,
+          rate: li.rate,
+          amount: lineItemAmount(li.qty, li.rate),
+          taxable: li.taxable,
+          order: idx,
+        })),
       },
-    });
+    },
   });
 
   await writeAudit({
@@ -95,10 +96,12 @@ export async function createInvoice(input: InvoiceInput) {
   });
 
   revalidatePath('/invoices');
+  revalidatePath('/invoice-generation');
   redirect(`/invoices/${created.id}`);
 }
 
 export async function updateInvoice(id: string, input: InvoiceInput) {
+  await requirePermission('invoices.edit');
   const data = invoiceSchema.parse(input);
   const taxSettings = await getTaxSettings();
 
@@ -160,11 +163,13 @@ export async function updateInvoice(id: string, input: InvoiceInput) {
   });
 
   revalidatePath('/invoices');
+  revalidatePath('/invoice-generation');
   revalidatePath(`/invoices/${id}`);
   return { ok: true };
 }
 
 export async function deleteInvoice(id: string) {
+  await requirePermission('invoices.delete');
   await prisma.invoice.delete({ where: { id } });
   await writeAudit({
     actor: await getAdminEmail(),
@@ -173,10 +178,12 @@ export async function deleteInvoice(id: string) {
     targetId: id,
   });
   revalidatePath('/invoices');
+  revalidatePath('/invoice-generation');
   return { ok: true };
 }
 
 export async function changeInvoiceStatus(id: string, newStatus: string) {
+  await requirePermission('invoices.edit');
   const invoice = await prisma.invoice.findUnique({ where: { id } });
   if (!invoice) return { ok: false };
   await prisma.invoice.update({
@@ -191,10 +198,12 @@ export async function changeInvoiceStatus(id: string, newStatus: string) {
     metadata: { from: invoice.status, to: newStatus },
   });
   revalidatePath(`/invoices/${id}`);
+  revalidatePath('/invoice-generation');
   return { ok: true };
 }
 
 export async function sendInvoiceEmail(id: string) {
+  await requirePermission('invoices.send');
   const invoice = await prisma.invoice.update({
     where: { id },
     data: { status: 'SENT' },
@@ -204,10 +213,14 @@ export async function sendInvoiceEmail(id: string) {
   const publicLink = `${process.env.NEXT_PUBLIC_APP_URL}/i/${invoice.publicToken}`;
   const context = buildInvoiceContext(invoice, publicLink);
 
-  await sendTemplatedEmail({
+  // Generate PDF attachment
+  const pdfBuffer = await generateInvoicePdf(id);
+
+  const emailResult = await sendTemplatedEmail({
     templateKey: 'invoiceAvailable',
     to: invoice.client.email,
     context,
+    attachments: [{ filename: `${invoice.number}.pdf`, content: pdfBuffer }],
   });
 
   await writeAudit({
@@ -219,6 +232,10 @@ export async function sendInvoiceEmail(id: string) {
   });
 
   revalidatePath(`/invoices/${id}`);
+  revalidatePath('/invoice-generation');
+  if (!emailResult.ok) {
+    return { ok: false, error: emailResult.error ?? 'Email send failed' };
+  }
   return { ok: true, publicLink };
 }
 
@@ -231,6 +248,7 @@ const paymentSchema = z.object({
 });
 
 export async function recordPayment(invoiceId: string, formData: FormData) {
+  await requirePermission('invoices.record_payment');
   const data = paymentSchema.parse({
     date: formData.get('date'),
     amount: formData.get('amount'),
@@ -239,38 +257,36 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
     memo: formData.get('memo') || undefined,
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.payment.create({
-      data: {
-        invoiceId,
-        date: new Date(data.date),
-        amount: data.amount,
-        method: data.method,
-        paymentId: data.paymentId,
-        memo: data.memo,
-        status: 'COMPLETED',
-      },
-    });
+  await prisma.payment.create({
+    data: {
+      invoiceId,
+      date: new Date(data.date),
+      amount: data.amount,
+      method: data.method,
+      paymentId: data.paymentId,
+      memo: data.memo,
+      status: 'COMPLETED',
+    },
+  });
 
-    // Recompute paid + status
-    const sumPaid = await tx.payment.aggregate({
-      where: { invoiceId, status: 'COMPLETED' },
-      _sum: { amount: true },
-    });
-    const totalPaid = sumPaid._sum.amount ?? 0;
+  // Recompute paid + status
+  const sumPaid = await prisma.payment.aggregate({
+    where: { invoiceId, status: 'COMPLETED' },
+    _sum: { amount: true },
+  });
+  const totalPaid = sumPaid._sum.amount ?? 0;
 
-    const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
-    if (!invoice) throw new Error('Invoice not found');
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+  if (!invoice) throw new Error('Invoice not found');
 
-    const totalDue = Math.max(0, invoice.total - totalPaid);
-    let newStatus = invoice.status;
-    if (totalPaid >= invoice.total) newStatus = 'PAID';
-    else if (totalPaid > 0) newStatus = 'PARTIAL';
+  const totalDue = Math.max(0, invoice.total - totalPaid);
+  let newStatus = invoice.status;
+  if (totalPaid >= invoice.total) newStatus = 'PAID';
+  else if (totalPaid > 0) newStatus = 'PARTIAL';
 
-    await tx.invoice.update({
-      where: { id: invoiceId },
-      data: { paid: totalPaid, totalDue, status: newStatus },
-    });
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { paid: totalPaid, totalDue, status: newStatus },
   });
 
   await writeAudit({
@@ -282,6 +298,7 @@ export async function recordPayment(invoiceId: string, formData: FormData) {
   });
 
   revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath('/invoice-generation');
   return { ok: true };
 }
 
@@ -290,24 +307,26 @@ export async function deletePayment(paymentId: string) {
   if (!payment) return { ok: false };
   const invoiceId = payment.invoiceId;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.payment.delete({ where: { id: paymentId } });
-    const sumPaid = await tx.payment.aggregate({
-      where: { invoiceId, status: 'COMPLETED' },
-      _sum: { amount: true },
-    });
-    const totalPaid = sumPaid._sum.amount ?? 0;
-    const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
-    if (!invoice) throw new Error('Invoice not found');
-    const totalDue = Math.max(0, invoice.total - totalPaid);
-    let newStatus = invoice.status;
-    if (totalPaid >= invoice.total) newStatus = 'PAID';
-    else if (totalPaid > 0) newStatus = 'PARTIAL';
-    else newStatus = invoice.status === 'PAID' || invoice.status === 'PARTIAL' ? 'SENT' : invoice.status;
-    await tx.invoice.update({
-      where: { id: invoiceId },
-      data: { paid: totalPaid, totalDue, status: newStatus },
-    });
+  await prisma.payment.delete({ where: { id: paymentId } });
+
+  const sumPaid = await prisma.payment.aggregate({
+    where: { invoiceId, status: 'COMPLETED' },
+    _sum: { amount: true },
+  });
+  const totalPaid = sumPaid._sum.amount ?? 0;
+
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+  if (!invoice) throw new Error('Invoice not found');
+
+  const totalDue = Math.max(0, invoice.total - totalPaid);
+  let newStatus = invoice.status;
+  if (totalPaid >= invoice.total) newStatus = 'PAID';
+  else if (totalPaid > 0) newStatus = 'PARTIAL';
+  else newStatus = invoice.status === 'PAID' || invoice.status === 'PARTIAL' ? 'SENT' : invoice.status;
+
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { paid: totalPaid, totalDue, status: newStatus },
   });
 
   await writeAudit({
@@ -319,6 +338,7 @@ export async function deletePayment(paymentId: string) {
   });
 
   revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath('/invoice-generation');
   return { ok: true };
 }
 
@@ -344,10 +364,4 @@ export async function sendReminderNow(id: string) {
   });
 
   return r;
-}
-
-// Helper: compute OVERDUE status on read (not stored)
-export function computeDisplayStatus(invoice: { status: string; dueDate: Date }): string {
-  if (invoice.status === 'SENT' && invoice.dueDate < new Date()) return 'OVERDUE';
-  return invoice.status;
 }

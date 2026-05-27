@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return new Response(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${quote.number}.pdf"`,
+      'Content-Disposition': `attachment; filename="${quote.number}.pdf"`,
     },
   });
 }

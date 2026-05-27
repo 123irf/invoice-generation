@@ -53,6 +53,6 @@ export async function saveQuoteSettings(formData: FormData) {
     metadata: { section: 'quotes' },
   });
 
-  revalidatePath('/settings/quotes');
+  revalidatePath('/settings/invoice-generation');
   return { ok: true };
 }

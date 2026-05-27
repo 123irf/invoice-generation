@@ -14,71 +14,69 @@ export async function acceptQuote(token: string) {
   const invoiceSettings = await getInvoiceSettings();
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const quote = await tx.quote.findUnique({
-        where: { publicToken: token },
-        include: { lineItems: { orderBy: { order: 'asc' } } },
-      });
-      if (!quote) throw new Error('Quote not found');
-      if (quote.status !== 'SENT') {
-        throw new Error(`Cannot accept — quote is already ${quote.status.toLowerCase()}`);
-      }
-
-      await tx.quote.update({
-        where: { id: quote.id },
-        data: { status: 'ACCEPTED', acceptedAt: new Date() },
-      });
-
-      let newInvoiceId: string | null = null;
-
-      if (settings.acceptedQuoteAction === 'convert_and_send' || settings.acceptedQuoteAction === 'convert_only') {
-        const number = await getNextInvoiceNumber(tx);
-        const dueDate = new Date();
-        dueDate.setDate(dueDate.getDate() + invoiceSettings.dueDateDays);
-
-        const invoice = await tx.invoice.create({
-          data: {
-            number,
-            clientId: quote.clientId,
-            sourceQuoteId: quote.id,
-            title: quote.title,
-            description: quote.description,
-            orderNumber: quote.orderNumber,
-            status: 'SENT',
-            dueDate,
-            subtotal: quote.subtotal,
-            taxPercentage: quote.taxPercentage,
-            taxAmount: quote.taxAmount,
-            discount: quote.discount,
-            paid: 0,
-            totalDue: quote.total,
-            total: quote.total,
-            terms: invoiceSettings.defaultTerms,
-            footer: invoiceSettings.defaultFooter,
-            lineItems: {
-              create: quote.lineItems.map((li, idx) => ({
-                parentType: 'INVOICE' as const,
-                qty: li.qty,
-                title: li.title,
-                description: li.description,
-                rate: li.rate,
-                amount: li.amount,
-                taxable: li.taxable,
-                order: idx,
-              })),
-            },
-          },
-        });
-        newInvoiceId = invoice.id;
-
-        await tx.quote.update({
-          where: { id: quote.id },
-          data: { status: 'CONVERTED', convertedInvoiceId: invoice.id },
-        });
-      }
-
-      return { quoteId: quote.id, newInvoiceId, action: settings.acceptedQuoteAction };
+    const quote = await prisma.quote.findUnique({
+      where: { publicToken: token },
+      include: { lineItems: { orderBy: { order: 'asc' } } },
     });
+    if (!quote) throw new Error('Quote not found');
+    if (quote.status !== 'SENT') {
+      throw new Error(`Cannot accept — quote is already ${quote.status.toLowerCase()}`);
+    }
+
+    await prisma.quote.update({
+      where: { id: quote.id },
+      data: { status: 'ACCEPTED', acceptedAt: new Date() },
+    });
+
+    let newInvoiceId: string | null = null;
+
+    if (settings.acceptedQuoteAction === 'convert_and_send' || settings.acceptedQuoteAction === 'convert_only') {
+      const number = await getNextInvoiceNumber();
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + invoiceSettings.dueDateDays);
+
+      const invoice = await prisma.invoice.create({
+        data: {
+          number,
+          clientId: quote.clientId,
+          sourceQuoteId: quote.id,
+          title: quote.title,
+          description: quote.description,
+          orderNumber: quote.orderNumber,
+          status: 'SENT',
+          dueDate,
+          subtotal: quote.subtotal,
+          taxPercentage: quote.taxPercentage,
+          taxAmount: quote.taxAmount,
+          discount: quote.discount,
+          paid: 0,
+          totalDue: quote.total,
+          total: quote.total,
+          terms: invoiceSettings.defaultTerms,
+          footer: invoiceSettings.defaultFooter,
+          lineItems: {
+            create: quote.lineItems.map((li, idx) => ({
+              parentType: 'INVOICE' as const,
+              qty: li.qty,
+              title: li.title,
+              description: li.description,
+              rate: li.rate,
+              amount: li.amount,
+              taxable: li.taxable,
+              order: idx,
+            })),
+          },
+        },
+      });
+      newInvoiceId = invoice.id;
+
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: { status: 'CONVERTED', convertedInvoiceId: invoice.id },
+      });
+    }
+
+    const result = { quoteId: quote.id, newInvoiceId, action: settings.acceptedQuoteAction };
 
     await writeAudit({
       actor: 'client@public',

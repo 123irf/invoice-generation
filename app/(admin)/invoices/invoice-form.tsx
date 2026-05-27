@@ -99,6 +99,7 @@ export function InvoiceForm({ initial, clients, predefinedItems, defaults, taxSe
   const [pending, startTransition] = useTransition();
   const [showDescription, setShowDescription] = useState(!!initial?.description);
   const [showTerms, setShowTerms] = useState(true);
+  const [showFooter, setShowFooter] = useState(!!initial?.footer || !!defaults.defaultFooter);
   const [editingDiscount, setEditingDiscount] = useState(false);
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
 
@@ -412,6 +413,27 @@ export function InvoiceForm({ initial, clients, predefinedItems, defaults, taxSe
               rows={4}
               value={state.terms}
               onChange={(e) => setState((s) => ({ ...s, terms: e.target.value }))}
+            />
+          )}
+        </div>
+
+        {/* Footer (collapsible) */}
+        <div>
+          <button
+            type="button"
+            className="flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
+            onClick={() => setShowFooter(!showFooter)}
+          >
+            <ChevronRight className={`h-4 w-4 transition-transform ${showFooter ? 'rotate-90' : ''}`} />
+            Footer
+          </button>
+          {showFooter && (
+            <Textarea
+              className="mt-2"
+              rows={3}
+              placeholder="Footer text..."
+              value={state.footer}
+              onChange={(e) => setState((s) => ({ ...s, footer: e.target.value }))}
             />
           )}
         </div>

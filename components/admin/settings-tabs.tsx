@@ -7,12 +7,13 @@ import { cn } from '@/lib/utils';
 const tabs = [
   { href: '/settings/general', label: 'General' },
   { href: '/settings/business', label: 'Business' },
-  { href: '/settings/quotes', label: 'Quotes' },
+  { href: '/settings/invoice-generation', label: 'Invoice Generation' },
   { href: '/settings/invoices', label: 'Invoices' },
   { href: '/settings/payments', label: 'Payments' },
   { href: '/settings/tax', label: 'Tax' },
   { href: '/settings/emails', label: 'Emails' },
   { href: '/settings/translate', label: 'Translate' },
+  { href: '/settings/users', label: 'Users' },
 ];
 
 export function SettingsTabs() {

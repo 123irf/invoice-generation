@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Select,
   SelectContent,
@@ -26,7 +27,7 @@ import {
   sendReminderNow,
 } from '../actions';
 import { RecordPaymentDialog } from './record-payment-dialog';
-import { Send, Pencil, Trash2, Link2, CreditCard, Bell } from 'lucide-react';
+import { Send, Pencil, Trash2, Link2, CreditCard, Bell, Download } from 'lucide-react';
 
 const ALL_STATUSES = ['DRAFT', 'SENT', 'PAID', 'PARTIAL', 'OVERDUE', 'CANCELLED'];
 
@@ -35,9 +36,10 @@ interface Props {
   currentStatus: string;
   publicToken: string;
   totalDue: number;
+  admin?: boolean;
 }
 
-export function InvoiceActions({ invoiceId, currentStatus, publicToken, totalDue }: Props) {
+export function InvoiceActions({ invoiceId, currentStatus, publicToken, totalDue, admin }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -104,49 +106,66 @@ export function InvoiceActions({ invoiceId, currentStatus, publicToken, totalDue
   return (
     <>
       <div className="flex flex-wrap gap-2 mb-6">
-        {currentStatus === 'DRAFT' && (
+        {admin && (
           <Button onClick={onSend} disabled={pending}>
             <Send className="h-4 w-4 mr-2" />
-            Send
+            Send Email
           </Button>
         )}
 
-        <Button variant="outline" onClick={() => setPaymentOpen(true)}>
-          <CreditCard className="h-4 w-4 mr-2" />
-          Record Payment
-        </Button>
+        {admin && (
+          <Button variant="outline" onClick={() => setPaymentOpen(true)}>
+            <CreditCard className="h-4 w-4 mr-2" />
+            Record Payment
+          </Button>
+        )}
 
-        <Button variant="outline" onClick={onSendReminder} disabled={pending}>
-          <Bell className="h-4 w-4 mr-2" />
-          Send Reminder Now
-        </Button>
+        {admin && (
+          <Button variant="outline" onClick={onSendReminder} disabled={pending}>
+            <Bell className="h-4 w-4 mr-2" />
+            Send Reminder Now
+          </Button>
+        )}
 
         <Button variant="outline" onClick={onCopyLink}>
           <Link2 className="h-4 w-4 mr-2" />
           Copy Public Link
         </Button>
 
-        <Button variant="outline" onClick={() => router.push(`/invoices/${invoiceId}/edit`)}>
-          <Pencil className="h-4 w-4 mr-2" />
-          Edit
-        </Button>
+        <a
+          href={`/invoices/${invoiceId}/pdf`}
+          download
+          className={cn(buttonVariants({ variant: 'outline' }))}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Download PDF
+        </a>
 
-        <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-          <Trash2 className="h-4 w-4 mr-2" />
-          Delete
-        </Button>
+        {admin && (
+          <>
+            <Button variant="outline" onClick={() => router.push(`/invoices/${invoiceId}/edit`)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
 
-        {/* Status override */}
-        <Select value={currentStatus} onValueChange={(val: string | null) => { if (val) onStatusChange(val); }}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ALL_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
+
+            {/* Status override */}
+            <Select value={currentStatus} onValueChange={(val: string | null) => { if (val) onStatusChange(val); }}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ALL_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
       </div>
 
       {/* Delete confirmation */}
